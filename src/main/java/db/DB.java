@@ -1,7 +1,7 @@
 package db;
 
-import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
@@ -12,21 +12,44 @@ import java.util.Properties;
 public class DB {
 
 	private static Connection conn = null;
-	
+
 	public static Connection getConnection() {
 		if (conn == null) {
 			try {
 				Properties props = loadProperties();
 				String url = props.getProperty("dburl");
-				conn = DriverManager.getConnection(url, props);
+				String user = props.getProperty("user");
+				String password = props.getProperty("password");
+
+				if (url == null || user == null || password == null) {
+					throw new DbException("Propriedades de conexão (dburl, user, password) incompletas no db.properties.");
+				}
+
+				if (!url.contains("?")) {
+					url += "?useSSL=false&allowPublicKeyRetrieval=true";
+				} else {
+					if (!url.contains("useSSL")) {
+						url += "&useSSL=false";
+					}
+					if (!url.contains("allowPublicKeyRetrieval")) {
+						url += "&allowPublicKeyRetrieval=true";
+					}
+				}
+
+				Class.forName("com.mysql.cj.jdbc.Driver");
+
+				conn = DriverManager.getConnection(url, user, password);
 			}
 			catch (SQLException e) {
 				throw new DbException(e.getMessage());
 			}
+			catch (ClassNotFoundException e) {
+				throw new DbException("Driver JDBC do MySQL (com.mysql.cj.jdbc.Driver) não encontrado: " + e.getMessage());
+			}
 		}
 		return conn;
 	}
-	
+
 	public static void closeConnection() {
 		if (conn != null) {
 			try {
@@ -36,10 +59,13 @@ public class DB {
 			}
 		}
 	}
-	
+
 	private static Properties loadProperties() {
-		try (FileInputStream fs = new FileInputStream("db.properties")) {
+		try (InputStream fs = DB.class.getClassLoader().getResourceAsStream("db.properties")) {
 			Properties props = new Properties();
+			if (fs == null) {
+				throw new DbException("Arquivo db.properties não encontrado em src/main/resources.");
+			}
 			props.load(fs);
 			return props;
 		}
@@ -47,7 +73,7 @@ public class DB {
 			throw new DbException(e.getMessage());
 		}
 	}
-	
+
 	public static void closeStatement(Statement st) {
 		if (st != null) {
 			try {
